@@ -4,11 +4,13 @@ from pathlib import Path
 
 import streamlit as st
 from langchain_chroma import Chroma
-from langchain_community.document_loaders import PyPDFLoader
+from pypdf import PdfReader
+from langchain_core.documents import Document
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_ollama import ChatOllama
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+
 
 # ---------------- CONFIG ----------------
 
@@ -24,8 +26,8 @@ DB = BASE / "Chroma-Db"
 UPLOADS = BASE / "uploaded_pdfs"
 UPLOADS.mkdir(exist_ok=True)
 
-# Matches your original Chroma default collection
 COLLECTION = "langchain"
+
 
 # ---------------- CUSTOM CSS ----------------
 
@@ -153,6 +155,7 @@ hr {
 </style>
 """, unsafe_allow_html=True)
 
+
 # ---------------- MODELS ----------------
 
 @st.cache_resource
@@ -180,7 +183,6 @@ def store():
 
 
 # ---------------- PROMPT ----------------
-
 
 prompt = ChatPromptTemplate.from_messages([
     (
@@ -247,6 +249,7 @@ if "indexed_files" not in st.session_state:
 if "question" not in st.session_state:
     st.session_state.question = None
 
+
 # ---------------- SIDEBAR ----------------
 
 with st.sidebar:
@@ -309,11 +312,22 @@ with st.sidebar:
             try:
                 with st.spinner(f"Indexing {f.name}..."):
 
-                    pages = PyPDFLoader(str(file_path)).load()
+                    # PDF LOADING FIX
+                    # No deprecated PyPDFLoader needed
 
-                    for page in pages:
-                        page.metadata["source"] = f.name
-                        page.metadata["file_hash"] = digest
+                    reader = PdfReader(str(file_path))
+
+                    pages = [
+                        Document(
+                            page_content=page.extract_text() or "",
+                            metadata={
+                                "source": f.name,
+                                "page": i,
+                                "file_hash": digest
+                            }
+                        )
+                        for i, page in enumerate(reader.pages)
+                    ]
 
                     splitter = RecursiveCharacterTextSplitter(
                         chunk_size=1000,
@@ -368,6 +382,7 @@ with st.sidebar:
 
     st.caption("🤖 Ollama · gemma3:4b")
 
+
 # ---------------- MAIN UI ----------------
 
 st.markdown(
@@ -381,6 +396,7 @@ st.markdown(
 messages = st.session_state.chats[
     st.session_state.active
 ]
+
 
 # ---------------- WELCOME SCREEN ----------------
 
@@ -411,6 +427,7 @@ if not messages:
                 st.session_state.question = choice
                 st.rerun()
 
+
 # ---------------- CHAT HISTORY ----------------
 
 for message in messages:
@@ -427,6 +444,7 @@ for message in messages:
                 for src in message["sources"]:
                     st.caption(src)
 
+
 # ---------------- CHAT INPUT ----------------
 
 question = st.chat_input(
@@ -436,6 +454,7 @@ question = st.chat_input(
 if st.session_state.question:
     question = st.session_state.question
     st.session_state.question = None
+
 
 # ---------------- RAG PIPELINE ----------------
 
